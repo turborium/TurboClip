@@ -248,10 +248,6 @@ func (bot *Bot) onCallback(callback *tb.Callback) {
 	bot.send(callback.Sender, text, &tb.SendOptions{ParseMode: tb.ModeMarkdown})
 }
 
-func Error(s string) {
-	panic("unimplemented")
-}
-
 // /start
 func (bot *Bot) onStart(message *tb.Message) {
 	log.Printf("[bot] /start for user [\"%v\", %v]", message.Sender.Username, message.Sender.ID)
@@ -315,7 +311,7 @@ func (bot *Bot) Run() {
 		}
 	*/
 
-	log.Print("[bot] start")
+	log.Print("[bot] init")
 
 	bot.startTime = time.Now().UTC()
 
@@ -332,6 +328,13 @@ func (bot *Bot) Run() {
 		return
 	}
 
+	// check super user
+	superUser, err := bot.telebot.ChatMemberOf(&tb.Chat{ID: Config.OwnerID}, &tb.User{ID: Config.OwnerID})
+	if err != nil {
+		log.Fatalf("ERROR[bot] super user not found ID:%d: %v", Config.OwnerID, err)
+	}
+	log.Printf("[bot] super user: [\"%v\", %v]", superUser.User.Username, Config.OwnerID)
+
 	// for owner
 	bot.handle("/log", bot.onlyForOwner(bot.onLog))
 	bot.handle("/logfile", bot.onlyForOwner(bot.onLogfile))
@@ -344,5 +347,6 @@ func (bot *Bot) Run() {
 	bot.handle("/stat", bot.onStat)
 	bot.handle(tb.OnText, bot.onText)
 
+	log.Print("[bot] start")
 	bot.telebot.Start()
 }
