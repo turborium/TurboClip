@@ -21,7 +21,8 @@ type Bot struct {
 	telebot   *tb.Bot
 }
 
-const maxClipPerHour = 10
+const maxClipPer12Hours = 15
+const maxClipLength = 120
 
 func (bot *Bot) pwnedCheck(message *tb.Message) {
 	if message.Sender.ID != bot.OwnerID {
@@ -187,6 +188,14 @@ func (bot *Bot) onList(message *tb.Message) {
 	bot.send(message.Sender, text.Format("ChooseMounth"), &tb.SendOptions{ParseMode: tb.ModeMarkdown, ReplyMarkup: selector})
 }
 
+func escape(s string) string {
+	s = strings.ReplaceAll(s, "*", "\\*")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	s = strings.ReplaceAll(s, "[", "\\[")
+	s = strings.ReplaceAll(s, "`", "\\`")
+	return s
+}
+
 // callback - owner only
 func (bot *Bot) onCallback(callback *tb.Callback) {
 	log.Printf("[bot] callback for user [\"%v\", %v]: \"%v\"", callback.Sender.Username, callback.Sender.ID, callback.Data)
@@ -234,7 +243,7 @@ func (bot *Bot) onCallback(callback *tb.Callback) {
 	for _, item := range highlights {
 		if day != item.Time.In(loc).Day() {
 			day = item.Time.In(loc).Day()
-			text = text + item.Time.In(loc).Format("*\n[ 02.01.06 ]*\n")
+			text = text + item.Time.In(loc).Format("\n*[02.01.06]*\n")
 		}
 
 		user, err := db.AddOrFindUser(item.UserID, nil)
@@ -242,7 +251,7 @@ func (bot *Bot) onCallback(callback *tb.Callback) {
 			bot.internalError(err)
 		}
 
-		text = text + item.Time.In(loc).Format("*15:04 - \"") + user.Name + "\"*\n" + item.Text + "\n"
+		text = text + item.Time.In(loc).Format("\n```\n15:04 - \"") + user.Name + "\"```\n" + escape(item.Text) + "\n"
 	}
 
 	bot.send(callback.Sender, text, &tb.SendOptions{ParseMode: tb.ModeMarkdown})
@@ -255,6 +264,14 @@ func (bot *Bot) onStart(message *tb.Message) {
 	bot.send(message.Sender, text.Format("Start", message.Sender.FirstName), &tb.SendOptions{ParseMode: tb.ModeMarkdown})
 }
 
+func clip(s string, count int) string {
+	if len([]rune(s)) > count {
+		return string([]rune(s)[:count])
+	} else {
+		return s
+	}
+}
+
 // text
 func (bot *Bot) onText(message *tb.Message) {
 	log.Printf("[bot] text for user [\"%v\", %v]", message.Sender.Username, message.Sender.ID)
@@ -265,13 +282,19 @@ func (bot *Bot) onText(message *tb.Message) {
 	}
 
 	// spam test
-	count, err := db.CountForDuration(message.Sender.ID, time.Hour)
+	count, err := db.CountForDuration(message.Sender.ID, time.Hour*12)
 	if err != nil {
 		bot.internalError(err)
 	}
-	if count >= maxClipPerHour {
-		log.Printf("[bot] spam from [\"%v\", %v]: \"%v\"", message.Sender.Username, message.Sender.ID, message.Text)
+	if count >= maxClipPer12Hours {
+		log.Printf("[bot] spam from [\"%v\", %v]: \"%v\"", message.Sender.Username, message.Sender.ID, clip(message.Text, maxClipLength))
 		bot.send(message.Sender, text.Format("Spam"))
+		return
+	}
+
+	if len([]rune(message.Text)) > maxClipLength {
+		log.Printf("[bot] too long clip from [\"%v\", %v]: \"%v\"", message.Sender.Username, message.Sender.ID, clip(message.Text, maxClipLength))
+		bot.send(message.Sender, text.Format("TooLong", maxClipLength))
 		return
 	}
 
